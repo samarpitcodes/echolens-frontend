@@ -135,11 +135,59 @@ export function getChatHistory(projectId: string) {
 // If your ArchitectureRequest schema needs fields (e.g. sections), pass them
 // as the payload argument below once you confirm the schema.
 
-export function generateArchitecture(projectId: string, payload: Record<string, unknown> = {}) {
-  return request<ArchitectResult[]>(`/projects/${projectId}/architecture`, {
+function normalizeArchitectureResults(payload: unknown): ArchitectResult[] {
+  const value = payload as Record<string, unknown> | unknown[] | null;
+
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is ArchitectResult =>
+        typeof item === "object" && item !== null && "content" in item
+    );
+  }
+
+  if (!value || typeof value !== "object") return [];
+
+  // Backends commonly return one of these wrappers. Keeping the adaptation
+  // here means the page always receives a safe array to render.
+  for (const key of ["results", "sections", "architecture", "items", "data"]) {
+    if (key in value) {
+      const nested = normalizeArchitectureResults(value[key]);
+      if (nested.length) return nested;
+    }
+  }
+
+  if (typeof value.content === "string") {
+    return [{
+      section: (typeof value.section === "string" ? value.section : "implementation_plan") as ArchitectResult["section"],
+      title: typeof value.title === "string" ? value.title : "Architecture plan",
+      content: value.content,
+    }];
+  }
+
+  // Some implementations return an object keyed by section names.
+  return Object.entries(value)
+    .filter(([, content]) => typeof content === "string")
+    .map(([section, content]) => ({
+      section: section as ArchitectResult["section"],
+      title: section.replaceAll("_", " "),
+      content: content as string,
+    }));
+}
+
+export async function generateArchitecture(projectId: string, payload: Record<string, unknown> = {}) {
+  const response = await request<unknown>(`/projects/${projectId}/architecture`, {
     method: "POST",
-    body: JSON.stringify(payload),
+    // The API uses the project id both as a path parameter and as a required
+    // field in ArchitectureRequest. Supplying both is required by FastAPI.
+    body: JSON.stringify({ project_id: projectId, ...payload }),
   });
+  const results = normalizeArchitectureResults(response);
+
+  if (!results.length) {
+    throw new Error("The architect returned an empty plan. Add project documents and try again.");
+  }
+
+  return results;
 }
 
 export function generateRoadmap(projectId: string, payload: Record<string, unknown> = {}) {

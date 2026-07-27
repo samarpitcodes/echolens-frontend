@@ -26,6 +26,11 @@ export default function ArchitectPage() {
   const [error, setError] = useState("");
 
   async function handleGenerate() {
+    if (!params.projectId) {
+      setError("Choose a project before generating an architecture.");
+      return;
+    }
+
     setLoading(true);
     setError("");
     try {
@@ -67,6 +72,11 @@ export default function ArchitectPage() {
             )}
           </Button>
           {error && <p className="text-sm text-error">{error}</p>}
+          {!loading && !error && results.length === 0 && (
+            <p className="text-xs text-text-muted">
+              Upload documents to this project first, then generate a plan grounded in them.
+            </p>
+          )}
         </CardContent>
       </Card>
 
