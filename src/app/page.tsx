@@ -20,13 +20,17 @@ import {
   Settings,
   Sparkles,
   Sun,
+  Moon,
   Upload,
   X,
+  LogOut,
+  UserRound,
 } from "lucide-react";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { EchoMark } from "@/components/echo-mark";
 import { listProjects } from "@/lib/api";
 import type { Project } from "@/types";
+import { useAuth } from "@/components/auth-provider";
 
 const fallbackProjects: Project[] = [
   { id: "ai-research", name: "AI Research Assistant", description: "Research papers and notes about LLMs and RAG", created_at: "2026-07-24", document_count: 18 },
@@ -60,29 +64,38 @@ function Chart() {
 }
 
 export default function HomePage() {
+  const { user, signOut, updateProfile } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [navOpen, setNavOpen] = useState(false);
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(false);
+  const [themeReady, setThemeReady] = useState(false);
   const [notice, setNotice] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [period, setPeriod] = useState("This Week");
 
   useEffect(() => {
     listProjects().then((result) => setProjects(result.items)).catch(() => setProjects(fallbackProjects)).finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { document.documentElement.dataset.theme = dark ? "dark" : "light"; }, [dark]);
+  useEffect(() => { queueMicrotask(() => { setDark(localStorage.getItem("echolens-theme") === "dark"); setThemeReady(true); }); }, []);
+  useEffect(() => { if (themeReady) { document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("echolens-theme", dark ? "dark" : "light"); } }, [dark, themeReady]);
 
   const visibleProjects = useMemo(() => projects.filter((project) => `${project.name} ${project.description ?? ""}`.toLowerCase().includes(query.toLowerCase())), [projects, query]);
   const primaryProject = projects[0];
+  const name = user?.name || "there";
+  const initials = name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
   const navItems = [[LayoutDashboard, "Dashboard"], [FolderKanban, "Projects"], [MessageSquareText, "AI Chat"], [Box, "Knowledge Base"], [BrainCircuit, "AI Architect"], [Settings, "Settings"]] as const;
 
   return <div className="app-shell">
     <aside className={`sidebar ${navOpen ? "open" : ""}`}>
       <div className="brand"><EchoMark className="brand-mark" /><span>EchoLens</span><button className="sidebar-close" onClick={() => setNavOpen(false)} aria-label="Close menu"><X size={18}/></button></div>
-      <nav>{navItems.map(([Icon, label], index) => <button key={label} className={`nav-item ${index === 0 ? "active" : ""}`} onClick={() => { if (label === "Projects") document.getElementById("projects")?.scrollIntoView({ behavior: "smooth" }); }}><Icon size={18}/><span>{label}</span></button>)}</nav>
-      <div className="upgrade-card"><Sparkles size={18}/><strong>Upgrade to Pro</strong><p>Unlock unlimited projects, larger uploads, and advanced AI models.</p><button>Upgrade now <ArrowRight size={14}/></button></div>
-      <div className="account"><div className="avatar">GS</div><div><strong>Gurnoor Singh</strong><small>gurnoor@example.com</small></div><ChevronDown size={16}/></div>
+      <nav>{navItems.map(([Icon, label], index) => <button key={label} className={`nav-item ${index === 0 ? "active" : ""}`} onClick={() => { if (label === "Projects") document.getElementById("projects")?.scrollIntoView({ behavior: "smooth" }); else if (label === "Settings") { setAccountOpen(true); setEditingProfile(true); } else if (primaryProject) window.location.assign(`/projects/${primaryProject.id}/${label === "AI Chat" ? "chat" : label === "Knowledge Base" ? "knowledge-base" : "architect"}`); }}><Icon size={18}/><span>{label}</span></button>)}</nav>
+      <div className="upgrade-card"><Sparkles size={18}/><strong>Upgrade to Pro</strong><p>Unlimited projects and larger uploads are ready for your backend plan.</p><button onClick={() => setNotice(true)}>View plan <ArrowRight size={14}/></button></div>
+      <button className="account" onClick={() => setAccountOpen(!accountOpen)}><div className="avatar">{initials}</div><div><strong>{name}</strong><small>{user?.email}</small></div><ChevronDown size={16}/></button>
     </aside>
 
     {navOpen && <button className="nav-backdrop" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
@@ -90,11 +103,13 @@ export default function HomePage() {
       <header className="topbar">
         <button className="mobile-menu" onClick={() => setNavOpen(true)} aria-label="Open menu"><Menu size={21}/></button>
         <label className="search-box"><Search size={17}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects, documents, chats..."/><kbd>⌘ K</kbd></label>
-        <div className="top-actions"><button className="icon-button notification" onClick={() => setNotice(!notice)} aria-label="Notifications"><Bell size={19}/><i/></button><button className="icon-button" onClick={() => setDark(!dark)} aria-label="Toggle color theme"><Sun size={19}/></button><div className="top-avatar">GS</div></div>
+        <div className="top-actions"><button className="icon-button notification" onClick={() => setNotice(!notice)} aria-label="Notifications"><Bell size={19}/><i/></button><button className="icon-button" onClick={() => setDark(!dark)} aria-label="Toggle color theme">{dark ? <Sun size={19}/> : <Moon size={19}/>}</button><button className="top-avatar" onClick={() => setAccountOpen(!accountOpen)} aria-label="Open account menu">{initials}</button></div>
         {notice && <div className="notifications"><strong>You&apos;re all caught up</strong><span>No new workspace activity.</span></div>}
       </header>
 
-      <section className="page-intro"><div><h1>Good afternoon, Gurnoor <span>👋</span></h1><p>Here&apos;s what&apos;s happening with your projects today.</p></div><CreateProjectDialog onCreated={(project) => setProjects((current) => [project, ...current])} /></section>
+      {accountOpen && <div className="account-menu"><div className="account-menu-head"><span className="avatar">{initials}</span><div><strong>{name}</strong><small>{user?.email}</small></div></div>{editingProfile ? <form onSubmit={(event) => { event.preventDefault(); updateProfile(profileName || name); setEditingProfile(false); }}><label>Display name<input autoFocus defaultValue={name} onChange={(event) => setProfileName(event.target.value)}/></label><button type="submit">Save profile</button></form> : <button onClick={() => { setProfileName(name); setEditingProfile(true); }}><UserRound size={15}/> Edit profile</button>}<button onClick={signOut}><LogOut size={15}/> Sign out</button></div>}
+
+      <section className="page-intro"><div><h1>Good afternoon, {name.split(" ")[0]} <span>👋</span></h1><p>Here&apos;s what&apos;s happening with your projects today.</p></div><CreateProjectDialog onCreated={(project) => setProjects((current) => [project, ...current])} /></section>
 
       <section className="metrics"><MetricCard icon={FolderKanban} label="Total Projects" value={String(Math.max(projects.length, 12))} change="2" tone="violet"/><MetricCard icon={FileText} label="Documents" value="213" change="18" tone="blue"/><MetricCard icon={MessageSquareText} label="AI Chats" value="1,450" change="27" tone="teal"/><MetricCard icon={Globe2} label="Sources Used" value="3,928" change="42" tone="purple"/></section>
 
@@ -102,7 +117,7 @@ export default function HomePage() {
         <article className="panel projects-panel" id="projects"><div className="panel-heading"><h2>Recent Projects</h2><Link href="#projects">View all</Link></div><div className="project-list">
           {loading ? <p className="empty-text">Loading your projects…</p> : visibleProjects.length ? visibleProjects.slice(0, 4).map((project, index) => <Link href={`/projects/${project.id}`} key={project.id} className="project-row"><div className={`project-icon ${accents[index % accents.length]}`}>{index === 0 ? <BrainCircuit size={19}/> : index === 1 ? <CircleHelp size={19}/> : <Sparkles size={19}/>}</div><div className="project-copy"><strong>{project.name}</strong><span>{project.description || "Your private research workspace"}</span><small>{project.document_count ?? 0} Documents <b>•</b> Active recently</small></div><MoreVertical size={18}/></Link>) : <p className="empty-text">No projects match your search.</p>}
         </div></article>
-        <article className="panel activity-panel"><div className="panel-heading"><h2>Activity Overview</h2><button className="period-button">This Week <ChevronDown size={14}/></button></div><Chart /></article>
+        <article className="panel activity-panel"><div className="panel-heading"><h2>Activity Overview</h2><button className="period-button" onClick={() => setPeriod(period === "This Week" ? "Last 7 days" : "This Week")}>{period} <ChevronDown size={14}/></button></div><Chart /></article>
         <aside className="right-column"><article className="panel assistant-panel"><div className="assistant-title"><Sparkles size={20}/><h2>AI Assistant</h2></div><p>How can I help you today?</p>{["Summarize my recent documents", "Find insights about RAG", "Generate project architecture"].map((text) => <Link key={text} href={primaryProject ? `/projects/${primaryProject.id}/${text.includes("architecture") ? "architect" : "chat"}` : "#"}>{text}<ArrowRight size={15}/></Link>)}</article><article className="panel activity-feed"><div className="panel-heading"><h2>Recent Activity</h2><button>View all</button></div>{[[FileText,"Research.pdf uploaded","2h ago","red"],[MessageSquareText,"Chat with AI","3h ago","violet"],[Globe2,"arxiv.org imported","5h ago","teal"],[Box,"System architecture generated","1d ago","blue"]].map(([Icon, text, when, tone]) => { const FeedIcon = Icon as typeof FileText; return <div className="feed-item" key={String(text)}><span className={`feed-icon ${tone}`}><FeedIcon size={15}/></span><div><strong>{String(text)}</strong><small>AI Research Assistant</small></div><time>{String(when)}</time></div>; })}</article><article className="panel storage"><div><span>Storage Used</span><small>45.2 GB / 100 GB</small></div><div className="storage-track"><i/></div><p>45% used</p></article></aside>
       </section>
       <section className="panel quick-actions"><h2>Quick Actions</h2><div>{[[Upload,"Upload PDF","Add documents"],[Globe2,"Add Website","Crawl & import"],[MessageSquareText,"Start AI Chat","Ask anything"],[Box,"AI Architect","Generate plan"]].map(([Icon, title, description]) => { const ActionIcon = Icon as typeof Upload; const href = primaryProject ? `/projects/${primaryProject.id}/${title === "AI Architect" ? "architect" : title === "Start AI Chat" ? "chat" : "upload"}` : "#"; return <Link href={href} key={String(title)}><span><ActionIcon size={19}/></span><div><strong>{String(title)}</strong><small>{String(description)}</small></div><ArrowRight size={16}/></Link>; })}</div></section>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthGate, AuthProvider } from "@/components/auth-provider";
 
 export const metadata: Metadata = {
   title: "EchoLens — Research Once. Build Smarter.",
@@ -14,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className="min-h-full flex flex-col font-sans bg-bg text-text antialiased">
-        {children}
+        <AuthProvider><AuthGate>{children}</AuthGate></AuthProvider>
       </body>
     </html>
   );
